@@ -2,16 +2,42 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import time
 
 st.title("📊 GUVBI-X Dashboard")
 
 tickers = ["NVDA", "AMD", "AVGO", "TSLA", "SMCI", "META"]
 
-def get_data(ticker):
-    df = yf.download(ticker, period="2y", interval="1wk", progress=False)
-    if df.empty:
+
+
+def get_qqq_safe():
+    try:
+        df = yf.download("QQQ", period="2y", interval="1wk", progress=False)
+        time.sleep(1)  # 防止被限流
         return df
-    return df[['Close', 'Volume']]
+    except:
+        return pd.DataFrame()
+
+qqq = get_qqq_safe()
+
+# 🔥 關鍵：完全防炸
+if qqq is None or qqq.empty or len(qqq) < 40:
+    market_bull = False
+
+else:
+    qqq['SMA200'] = qqq['Close'].rolling(40).mean()
+
+    latest_close = qqq['Close'].iloc[-1]
+    latest_sma = qqq['SMA200'].iloc[-1]
+
+    if pd.notna(latest_sma):
+        market_bull = bool(latest_close > latest_sma)  # 🔥 強制轉 boolean
+    else:
+        market_bull = False
+
+@st.cache_data(ttl=3600)
+def get_data(ticker):
+    return yf.download(ticker, period="2y", interval="1wk", progress=False)
 
 def compute_guvbi(df):
     df['SMA10'] = df['Close'].rolling(10).mean()
@@ -44,6 +70,7 @@ def compute_guvbi(df):
     return df
 
 # 市場判斷（修正版）
+
 qqq = yf.download("QQQ", period="2y", interval="1wk", progress=False)
 
 if not qqq.empty and len(qqq) > 40:
@@ -70,11 +97,17 @@ results = []
 for t in tickers:
     df = get_data(t)
 
-    if df.empty or len(df) < 30:
-        continue
+    if df is None or df.empty or len(df) < 30:
+    continue
 
     df = compute_guvbi(df)
+
+    if df.empty:
+        continue
+
     latest = df.iloc[-1]
+
+    
 
     if (
         latest['GUVBI3'] > 80 and
