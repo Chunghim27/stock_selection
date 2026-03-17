@@ -2,10 +2,38 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import time
 
 st.title("📊 GUVBI-X Dashboard")
 
 tickers = ["NVDA", "AMD", "AVGO", "TSLA", "SMCI", "META"]
+
+
+
+def get_qqq_safe():
+    try:
+        df = yf.download("QQQ", period="2y", interval="1wk", progress=False)
+        time.sleep(1)  # 防止被限流
+        return df
+    except:
+        return pd.DataFrame()
+
+qqq = get_qqq_safe()
+
+# 🔥 關鍵：完全防炸
+if qqq is None or qqq.empty or len(qqq) < 40:
+    market_bull = False
+
+else:
+    qqq['SMA200'] = qqq['Close'].rolling(40).mean()
+
+    latest_close = qqq['Close'].iloc[-1]
+    latest_sma = qqq['SMA200'].iloc[-1]
+
+    if pd.notna(latest_sma):
+        market_bull = bool(latest_close > latest_sma)  # 🔥 強制轉 boolean
+    else:
+        market_bull = False
 
 def get_data(ticker):
     df = yf.download(ticker, period="2y", interval="1wk", progress=False)
