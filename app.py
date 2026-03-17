@@ -5,19 +5,18 @@ import numpy as np
 
 st.title("📊 GUVBI-X Dashboard")
 
-# 股票池
 tickers = ["NVDA", "AMD", "AVGO", "TSLA", "SMCI", "META"]
 
-# 下載資料
 def get_data(ticker):
-    df = yf.download(ticker, period="2y", interval="1wk")
-    df = df[['Close', 'Volume']]
-    return df
+    df = yf.download(ticker, period="2y", interval="1wk", progress=False)
+    if df.empty:
+        return df
+    return df[['Close', 'Volume']]
 
-# 計算 GUVBI
 def compute_guvbi(df):
     df['SMA10'] = df['Close'].rolling(10).mean()
     df['STD10'] = df['Close'].rolling(10).std()
+
     df['Upper'] = df['SMA10'] + 2 * df['STD10']
     df['Lower'] = df['SMA10'] - 2 * df['STD10']
 
@@ -25,10 +24,12 @@ def compute_guvbi(df):
 
     df['VolSMA20'] = df['Volume'].rolling(20).mean()
     df['VolSTD20'] = df['Volume'].rolling(20).std()
+
     df['VolZ'] = (df['Volume'] - df['VolSMA20']) / df['VolSTD20']
     df['VolFactor'] = 1 + df['VolZ'] / 4
 
     df['Momentum'] = df['Close'] / df['Close'].shift(4)
+
     df['SMA30'] = df['Close'].rolling(30).mean()
     df['TrendFactor'] = df['Close'] / df['SMA30']
 
@@ -42,24 +43,37 @@ def compute_guvbi(df):
 
     return df
 
-# 市場判斷（QQQ）
-qqq = yf.download("QQQ", period="2y", interval="1wk")
-qqq['SMA200'] = qqq['Close'].rolling(40).mean()
-market_bull = qqq['Close'].iloc[-1] > qqq['SMA200'].iloc[-1]
+# 市場判斷（修正版）
+qqq = yf.download("QQQ", period="2y", interval="1wk", progress=False)
+
+if not qqq.empty and len(qqq) > 40:
+    qqq['SMA200'] = qqq['Close'].rolling(40).mean()
+    latest_close = qqq['Close'].iloc[-1]
+    latest_sma = qqq['SMA200'].iloc[-1]
+
+    if pd.notna(latest_sma):
+        market_bull = latest_close > latest_sma
+    else:
+        market_bull = False
+else:
+    market_bull = False
 
 st.subheader("📈 Market Status")
-if market_bull:
-    st.success("Bull Market ✅ 可以交易")
-else:
-    st.error("No Trade ❌ 建議空手")
 
-# 掃描股票
+if market_bull:
+    st.success("Bull Market ✅")
+else:
+    st.error("No Trade ❌")
+
 results = []
 
 for t in tickers:
     df = get_data(t)
-    df = compute_guvbi(df)
 
+    if df.empty or len(df) < 30:
+        continue
+
+    df = compute_guvbi(df)
     latest = df.iloc[-1]
 
     if (
@@ -70,7 +84,6 @@ for t in tickers:
     ):
         results.append((t, round(latest['GUVBI3'], 2)))
 
-# 排名
 results = sorted(results, key=lambda x: x[1], reverse=True)
 
 st.subheader("🔥 Top Signals")
@@ -79,9 +92,8 @@ if results:
     for r in results:
         st.write(f"{r[0]} → {r[1]}")
 else:
-    st.write("目前沒有交易機會（保持空手）")
+    st.write("No signals (stay in cash)")
 
-# 建議
 st.subheader("📌 Action")
 
 if market_bull and results:
